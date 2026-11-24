@@ -25,9 +25,10 @@ exe.root_module.addImport("gnuplot", gnuplot_dep.module("gnuplot_zig"));
 ## Example
 ```zig
 const std = @import("std");
+const gnuplot = @import("gnuplot");
 const Io = std.Io;
 
-const Figure = @import("figure.zig").Figure;
+const Figure = gnuplot.Figure;
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
