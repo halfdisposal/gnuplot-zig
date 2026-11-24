@@ -1,12 +1,57 @@
 const std = @import("std");
 const Io = std.Io;
 
-const FileTerm = struct {
-ext: []const u8,
-term: []const u8,
-inches: bool = false,
-};
 
+pub fn check_type(data: anytype) bool {
+    // std.debug.print("Data Info: {}\n", .{@typeInfo(@TypeOf(data))});
+    const is_valid: bool = switch (@typeInfo(@TypeOf(data))) {
+        .array => |arr| scan: {
+            if (arr.len == 0) {
+                break :scan false;
+            }
+            // std.debug.print("Array Child: {}\n", .{@typeInfo(arr.child)});
+            switch (@typeInfo(arr.child)) {
+                .int => break :scan true,
+                .float => break :scan true,
+                else => break :scan false,
+            }
+        },
+        .pointer => |ptr| switch (ptr.size) {
+            .slice => scan: {
+                // std.debug.print("Ptr Size: {}\n", .{@typeInfo(@TypeOf(ptr.size))});
+                // std.debug.print("Ptr Slice: {}\n", .{@typeInfo(ptr.child)});
+                switch (@typeInfo(ptr.child)) {
+                    .int => break :scan true,
+                    .float => break :scan true,
+                    else => break :scan false,
+                }
+            },
+            .one => switch (@typeInfo(ptr.child)) {
+                .array => |arr| scan: {
+                    if (arr.len == 0) {
+                        break :scan false;
+                    }
+                    // std.debug.print("Ptr Child: {}\n", .{@typeInfo(ptr.child)});
+                    // std.debug.print("Ptr One: {}\n", .{@typeInfo(arr.child)});
+                    switch (@typeInfo(arr.child)) {
+                        .int => break :scan true,
+                        .float => break :scan true,
+                        else => break :scan false,
+                    }
+                },
+                else => false,
+            },
+            else => false,
+        },
+        else => false,
+    };
+    return is_valid;
+}
+const FileTerm = struct {
+    ext: []const u8,
+    term: []const u8,
+    inches: bool = false,
+};
 
 const file_terms = [_]FileTerm{
     .{ .ext = ".png", .term = "pngcairo" },
@@ -30,7 +75,7 @@ pub const Figure = struct {
     height: u32,
     term: []const u8,
     gnuplot: []const u8,
-    
+
     data: std.ArrayList(u8) = .empty,
     options: std.ArrayList(u8) = .empty,
     clauses: std.ArrayList(u8) = .empty,
@@ -57,14 +102,14 @@ pub const Figure = struct {
             .allocator = allocator,
         };
     }
-    
+
     pub fn deinit(self: *Figure) void {
         self.data.deinit(self.allocator);
         self.options.deinit(self.allocator);
         self.clauses.deinit(self.allocator);
         self.* = undefined;
     }
-    
+
     pub const PlotOptions = struct {
         label: ?[]const u8 = null,
         color: ?[]const u8 = null,
@@ -75,51 +120,61 @@ pub const Figure = struct {
     };
 
     pub fn plot(self: *Figure, x: anytype, y: anytype, option: PlotOptions) !void {
+        if (!check_type(x) | !check_type(y)) {
+            return error.GnuplotMismatchDataType;
+        }
         if (x.len != y.len) return error.LengthMismatch;
-        
+
         const id = self.series_count;
         const a = self.allocator;
-        
+
         try self.data.print(a, "$d{d} << EOD\n", .{id});
         for (x, y) |xi, yi| {
-            try self.data.print(a, "{d} {d}\n", .{xi, yi});
+            try self.data.print(a, "{d} {d}\n", .{ xi, yi });
         }
         try self.data.appendSlice(a, "EOD\n");
 
         if (self.clauses.items.len > 0) try self.clauses.appendSlice(a, ", ");
-        try self.clauses.print(a, "$d{d} using 1:2 with lines lw {d} dt {d}", .{id, option.linewidth, option.linetype});
+        try self.clauses.print(a, "$d{d} using 1:2 with lines lw {d} dt {d}", .{ id, option.linewidth, option.linetype });
         if (option.color) |c| try self.clauses.print(a, " lc rgb '{s}'", .{c});
         if (option.label) |l| {
             try self.clauses.print(a, " title '{s}'", .{l});
         } else {
-        try self.clauses.appendSlice(a, " notitle");
+            try self.clauses.appendSlice(a, " notitle");
         }
         self.series_count += 1;
     }
-
 
     pub fn scatter(self: *Figure, x: anytype, y: anytype, option: PlotOptions) !void {
+        if (!check_type(x) | !check_type(y)) {
+            return error.GnuplotMismatchDataType;
+        }
         if (x.len != y.len) return error.LengthMismatch;
-        
+
         const id = self.series_count;
         const a = self.allocator;
-        
+
         try self.data.print(a, "$d{d} << EOD\n", .{id});
         for (x, y) |xi, yi| {
-            try self.data.print(a, "{d} {d}\n", .{xi, yi});
+            try self.data.print(a, "{d} {d}\n", .{ xi, yi });
         }
         try self.data.appendSlice(a, "EOD\n");
 
         if (self.clauses.items.len > 0) try self.clauses.appendSlice(a, ", ");
-        try self.clauses.print(a, "$d{d} using 1:2 with points ps {d} pt {d}", .{id, option.pointsize, option.pointtype});
+        try self.clauses.print(a, "$d{d} using 1:2 with points ps {d} pt {d}", .{ id, option.pointsize, option.pointtype });
         if (option.color) |c| try self.clauses.print(a, " lc rgb '{s}'", .{c});
         if (option.label) |l| {
             try self.clauses.print(a, " title '{s}'", .{l});
         } else {
-        try self.clauses.appendSlice(a, " notitle");
+            try self.clauses.appendSlice(a, " notitle");
         }
         self.series_count += 1;
     }
+
+    // pub fn imshow(self: *Figure, image: anytype) !void {
+    //     const is_valid = check_type(image);
+    //
+    // }
 
     const LabelOptions = struct {
         font: []const u8 = "Sans",
@@ -130,16 +185,16 @@ pub const Figure = struct {
     };
 
     pub fn xlabel(self: *Figure, label: []const u8, option: LabelOptions) !void {
-        try self.options.print(self.allocator, "set xlabel '{s}' font '{s},{d}' offset {d},{d} textcolor rgb '{s}'\n", .{label, option.font, option.fontsize, option.offset_x, option.offset_y, option.color});
+        try self.options.print(self.allocator, "set xlabel '{s}' font '{s},{d}' offset {d},{d} textcolor rgb '{s}'\n", .{ label, option.font, option.fontsize, option.offset_x, option.offset_y, option.color });
     }
     pub fn ylabel(self: *Figure, label: []const u8, option: LabelOptions) !void {
-        try self.options.print(self.allocator, "set ylabel '{s}' font '{s},{d}' offset {d},{d} textcolor rgb '{s}'\n", .{label, option.font, option.fontsize, option.offset_x, option.offset_y, option.color});
+        try self.options.print(self.allocator, "set ylabel '{s}' font '{s},{d}' offset {d},{d} textcolor rgb '{s}'\n", .{ label, option.font, option.fontsize, option.offset_x, option.offset_y, option.color });
     }
-    
+
     pub fn grid(self: *Figure) !void {
         try self.options.print(self.allocator, "set grid\n", .{});
     }
-    
+
     pub const Output = union(enum) {
         window,
         file: []const u8,
@@ -147,7 +202,7 @@ pub const Figure = struct {
 
     fn build(self: *const Figure, output: Output) ![]u8 {
         if (self.clauses.items.len == 0) return error.EmptyFigure;
-        
+
         const a = self.allocator;
         var out: std.ArrayList(u8) = .empty;
         errdefer out.deinit(a);
@@ -169,20 +224,20 @@ pub const Figure = struct {
                 try out.print(a, "set output '{s}'\n", .{path});
             },
         }
-        
+
         try out.appendSlice(a, self.options.items);
         try out.appendSlice(a, self.data.items);
         try out.appendSlice(a, "plot ");
         try out.appendSlice(a, self.clauses.items);
         try out.append(a, '\n');
-        
+
         return out.toOwnedSlice(a);
     }
 
     fn run(self: *const Figure, script: []const u8, persist: bool) !void {
-        const argv: []const []const u8 = if (persist) &.{self.gnuplot, "-persist"} else &.{self.gnuplot};
+        const argv: []const []const u8 = if (persist) &.{ self.gnuplot, "-persist" } else &.{self.gnuplot};
 
-        var child = try std.process.spawn(self.io, .{ 
+        var child = try std.process.spawn(self.io, .{
             .argv = argv,
             .stdin = .pipe,
             .stdout = .inherit,
@@ -190,9 +245,9 @@ pub const Figure = struct {
         });
         {
             errdefer child.kill(self.io);
-            
+
             const stdin = child.stdin orelse return error.MissingStdinPipe;
-            
+
             var buf: [4096]u8 = undefined;
             var w = stdin.writer(self.io, &buf);
             try w.interface.writeAll(script);
@@ -200,7 +255,6 @@ pub const Figure = struct {
 
             stdin.close(self.io);
             child.stdin = null;
-            
         }
 
         const term = try child.wait(self.io);
@@ -209,7 +263,7 @@ pub const Figure = struct {
             else => return error.GnuplotFailed,
         }
     }
-    
+
     pub fn show(self: *const Figure) !void {
         const script = try self.build(.window);
         defer self.allocator.free(script);
@@ -217,13 +271,11 @@ pub const Figure = struct {
     }
 
     pub fn savefig(self: *const Figure, path: []const u8) !void {
-        const script = try self.build(.{ .file =  path});
+        const script = try self.build(.{ .file = path });
         defer self.allocator.free(script);
         try self.run(script, false);
     }
-    
 };
-
 
 // tests
 

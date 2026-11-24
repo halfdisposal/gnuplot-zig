@@ -1,6 +1,7 @@
 const std = @import("std");
 const Io = std.Io;
 
+const g = @import("figure.zig");
 const Figure = @import("figure.zig").Figure;
 
 pub fn main(init: std.process.Init) !void {
