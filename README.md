@@ -3,6 +3,10 @@
 
 *I just love exploring languages and their ecosystem, particularly in numerical analysis and simulations, yeah its a wierd enough reason. But exploring zig I couldn't find a gnuplot wapper with api I like, so as a dev does, I made one... The api is similar to matplotlib from Python. Although technically this packages is just a wrapper to convert the passed arrays and options into the command strings, but it does its job. Doesn't have much here as it is pretty simple to use. The below example demonstrate the features*
 
+> [!WARNING]
+> Only 2D line and scatter plots are currently implemented, and the API may change as Zig 0.18 evolves.
+
+
 # Installation
 Fetch the repo
 ```bash
