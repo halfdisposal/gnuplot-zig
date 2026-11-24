@@ -43,8 +43,8 @@ pub fn main(init: std.process.Init) !void {
     try fig.plot(&x, &y2, .{.label = "line2"});
     try fig.show();
 }
-![gnuplot-zig example plot](fig.png)
 ```
+![gnuplot-zig example plot](fig.png)
 
 Each plot command is accompanied by a struct with options for the plot. Currently only 2D line and scatter plot are supported.
 **Saving To File**
