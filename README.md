@@ -59,6 +59,6 @@ try fig.savefig("file.png");
 Supported Files `png, jpg, jpeg, svg, pdf, gif, eps`
 
 # Features
-- **Lazy Evaluation**: No Commands (gnuplot side) is evaluated unless `fig.show()` is called.
+- **Lazy Evaluation**: No Commands (gnuplot side) is evaluated unless `fig.show()` or `fig.savefig(...)` is called.
 
 I will try to keep the api as similar as possible to *matplotlib*, atleast where ever possible. 
