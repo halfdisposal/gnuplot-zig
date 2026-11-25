@@ -115,8 +115,11 @@ pub const Figure = struct {
         color: ?[]const u8 = null,
         linewidth: f32 = 1.0,
         linetype: u32 = 1,
-        pointsize: f32 = 1.0,
-        pointtype: u32 = 7,
+        points: bool = false,
+        pointsize: f64 = 1.5,
+        pointstyle: u8 = 7,
+        pointinterval: f64 = 2.0,
+        pointnumber: f64 = -1.0,
     };
 
     pub fn plot(self: *Figure, x: anytype, y: anytype, option: PlotOptions) !void {
@@ -133,10 +136,14 @@ pub const Figure = struct {
             try self.data.print(a, "{d} {d}\n", .{ xi, yi });
         }
         try self.data.appendSlice(a, "EOD\n");
+        
+        const style = if (option.points) "linespoints" else "lines";
 
         if (self.clauses.items.len > 0) try self.clauses.appendSlice(a, ", ");
-        try self.clauses.print(a, "$d{d} using 1:2 with lines lw {d} dt {d}", .{ id, option.linewidth, option.linetype });
+        try self.clauses.print(a, "$d{d} using 1:2 with {s} lw {d} dt {d}", .{ id, style, option.linewidth, option.linetype });
         if (option.color) |c| try self.clauses.print(a, " lc rgb '{s}'", .{c});
+        if (option.points) try self.clauses.print(a, " pt {d} ps {d} pointinterval {d}", .{option.pointstyle, option.pointsize, option.pointinterval});
+        if (option.pointnumber > 0) try self.clauses.print(a, " pointnumber {d}", .{option.pointnumber});
         if (option.label) |l| {
             try self.clauses.print(a, " title '{s}'", .{l});
         } else {
@@ -144,8 +151,66 @@ pub const Figure = struct {
         }
         self.series_count += 1;
     }
+    
+    pub const BarOptions = struct {
+        boxwidth: f64 = 0.5,
+        alpha: f64 = 0.5,
+        border: bool = false,
+        color: ?[]const u8 = null,
+        label: ?[]const u8 = null,
+        ticks: ?[]const []const u8 = null,
+    };
 
-    pub fn scatter(self: *Figure, x: anytype, y: anytype, option: PlotOptions) !void {
+    pub fn bar(self: *Figure, data: anytype, option: BarOptions) !void {
+        if (!check_type(data)) {
+            return error.GnuplotMismatchDataType;
+        }
+
+        const id = self.series_count;
+        const a = self.allocator;
+
+        try self.data.print(a, "$d{d} << EOD\n", .{id});
+        for (1..(data.len+1), data) |xi, yi| {
+            try self.data.print(a, "{d} {d}\n", .{ xi, yi });
+        }
+        try self.data.appendSlice(a, "EOD\n");
+
+        if (self.clauses.items.len > 0) try self.clauses.appendSlice(a, ", ");
+        try self.clauses.print(a, "$d{d} using 1:2 with boxes", .{ id });
+        if (option.color) |c| try self.clauses.print(a, " lc rgb '{s}'", .{c});
+        if (option.label) |l| {
+            try self.clauses.print(a, " title '{s}'", .{l});
+        } else {
+            try self.clauses.appendSlice(a, " notitle");
+        }
+        if (option.ticks) |ticks| {
+            try self.options.appendSlice(a, "set xtics(");
+            for (1..(ticks.len + 1), ticks) |i, t| {
+                try self.options.print(a, "'{s}' {d}", .{t, i});
+                if (i != ticks.len) try self.options.appendSlice(a, ",");
+            }
+            try self.options.appendSlice(a, ")\n");
+        }
+        try self.options.appendSlice(a, "set style data boxes\n");
+        try self.options.print(a, "set boxwidth {d}\n", .{option.boxwidth});
+        try self.options.print(a, "set style fill solid {d} ", .{option.alpha});
+        if (option.border) {
+            try self.options.appendSlice(a, "border\n");
+        } else {
+            try self.options.appendSlice(a, "\n");
+        }
+
+
+        self.series_count += 1;
+    }
+
+    pub const ScatterOptions = struct {
+        label: ?[]const u8 = null,
+        color: ?[]const u8 = null,
+        pointsize: f32 = 1.0,
+        pointtype: u32 = 7,
+    };
+    pub fn scatter(self: *Figure, x: anytype, y: anytype, option: ScatterOptions) !void {
         if (!check_type(x) | !check_type(y)) {
             return error.GnuplotMismatchDataType;
         }
@@ -171,20 +236,26 @@ pub const Figure = struct {
         self.series_count += 1;
     }
 
-    pub fn imshow(self: *Figure, image: anytype, width: usize, height: usize) !void {
+    pub const ImageConfig = struct {
+        rgbformulae: [3]u32 = [_]u32{33, 13, 10},
+        cblabel: ?[]const u8 = null,
+        title: ?[]const u8 = null,
+    };
+
+    pub fn imshow(self: *Figure, image: anytype, width: usize, height: usize, options: ImageConfig) !void {
         if (!check_type(image)) {
             return error.GnuplotMismatchDataType;
         }
         const id = self.series_count;
         const a = self.allocator;
         
-        var min_c: f64 = 100000.0;
-        var max_c: f64 = -1.0;
+        var min_c: f64 = std.math.inf(f64);
+        var max_c: f64 = -std.math.inf(f64);
 
         try self.data.print(a, "$d{d} << EOD\n", .{id});
         for (0..height) |y| {
             for (0..width) |x| {
-                const index = height * y + x;
+                const index = width * y + x;
                 const value = image[index];
                 if (value <= min_c) min_c = value;
                 if (value >= max_c) max_c = value;
@@ -194,13 +265,24 @@ pub const Figure = struct {
         }
         try self.data.appendSlice(a, "EOD\n");
         if (self.clauses.items.len > 0) try self.clauses.appendSlice(a, ", ");
+        
+        if (min_c == max_c) {
+            min_c -= 0.5;
+            max_c += 0.5;
+        }
 
-        try self.options.print(a, "set palette rgbformulae 33,13,10\n", .{});
-        try self.options.print(a, "set cbrange [{d}:{d}]\n", .{min_c, max_c});
+        try self.options.print(a, "set palette rgbformulae {d},{d},{d}\n", .{options.rgbformulae[0], options.rgbformulae[1], options.rgbformulae[2]});
+        try self.options.print(a, "set cbrange [*:*]\n", .{});
+        if (options.cblabel) |l| try self.options.print(a, "set cblabel '{s}'\n", .{l});
         try self.options.print(a, "set colorbox\n", .{});
         try self.options.print(a, "unset key\n", .{});
         try self.options.print(a, "set size ratio -1\n", .{});
-        try self.clauses.print(a, "$d{d} matrix with image\n", .{ id });
+        try self.clauses.print(a, "$d{d} matrix with image", .{ id });
+        if (options.title) |t| {
+            try self.clauses.print(a, " title '{s}'", .{ t });
+        } else {
+            try self.clauses.appendSlice(a, " notitle");
+        }
         
         self.series_count += 1;
     }
@@ -218,6 +300,41 @@ pub const Figure = struct {
     }
     pub fn ylabel(self: *Figure, label: []const u8, option: LabelOptions) !void {
         try self.options.print(self.allocator, "set ylabel '{s}' font '{s},{d}' offset {d},{d} textcolor rgb '{s}'\n", .{ label, option.font, option.fontsize, option.offset_x, option.offset_y, option.color });
+    }
+
+    pub fn xlim(self: *Figure, min: f64, max: f64) !void {
+        try self.options.print(self.allocator, "set xrange [{d}:{d}]\n", .{min, max});
+    }
+    pub fn ylim(self: *Figure, min: f64, max: f64) !void {
+        try self.options.print(self.allocator, "set yrange [{d}:{d}]\n", .{min, max});
+    }
+    
+    pub fn xreverse(self: *Figure) !void {
+        try self.options.appendSlice(self.allocator, "set xrange [*:*] reverse\n");
+    }
+
+    pub fn yreverse(self: *Figure) !void {
+        try self.options.appendSlice(self.allocator, "set yrange [*:*] reverse\n");
+    }
+
+    pub fn axis(self: *Figure, state: []const u8) !void {
+        if (std.mem.eql(u8, state, "off")) {
+            try self.options.appendSlice(self.allocator, "unset xtics\n");
+            try self.options.appendSlice(self.allocator, "unset ytics\n");
+            try self.options.appendSlice(self.allocator, "unset xlabel\n");
+            try self.options.appendSlice(self.allocator, "unset ylabel\n");
+            try self.options.appendSlice(self.allocator, "unset border\n");
+            try self.options.appendSlice(self.allocator, "unset xzeroaxis\n");
+            try self.options.appendSlice(self.allocator, "unset yzeroaxis\n");
+        } else if (std.mem.eql(u8, state, "off-labels")) {
+            try self.options.appendSlice(self.allocator, "unset xlabel\n");
+            try self.options.appendSlice(self.allocator, "unset ylabel\n");
+        } else if (std.mem.eql(u8, state, "off-ticks")) {
+            try self.options.appendSlice(self.allocator, "unset xtics\n");
+            try self.options.appendSlice(self.allocator, "unset ytics\n");
+        } else if (std.mem.eql(u8, state, "off-border")) {
+            try self.options.appendSlice(self.allocator, "unset border\n");
+        }
     }
 
     pub fn grid(self: *Figure) !void {
@@ -254,6 +371,7 @@ pub const Figure = struct {
             },
         }
 
+    try out.appendSlice(a, "reset\n");
         try out.appendSlice(a, self.options.items);
         try out.appendSlice(a, self.data.items);
         try out.appendSlice(a, "plot ");
@@ -293,16 +411,25 @@ pub const Figure = struct {
         }
     }
 
-    pub fn show(self: *const Figure) !void {
+    pub fn show(self: *Figure) !void {
         const script = try self.build(.window);
         defer self.allocator.free(script);
         try self.run(script, true);
+        self.clear();
     }
 
-    pub fn savefig(self: *const Figure, path: []const u8) !void {
+    pub fn savefig(self: *Figure, path: []const u8) !void {
         const script = try self.build(.{ .file = path });
         defer self.allocator.free(script);
         try self.run(script, false);
+        self.clear();
+    }
+    
+    pub fn clear(self: *Figure) void {
+        self.data.clearRetainingCapacity();
+        self.options.clearRetainingCapacity();
+        self.clauses.clearRetainingCapacity();
+        self.series_count = 0;
     }
 };
 
