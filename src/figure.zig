@@ -171,10 +171,39 @@ pub const Figure = struct {
         self.series_count += 1;
     }
 
-    // pub fn imshow(self: *Figure, image: anytype) !void {
-    //     const is_valid = check_type(image);
-    //
-    // }
+    pub fn imshow(self: *Figure, image: anytype, width: usize, height: usize) !void {
+        if (!check_type(image)) {
+            return error.GnuplotMismatchDataType;
+        }
+        const id = self.series_count;
+        const a = self.allocator;
+        
+        var min_c: f64 = 100000.0;
+        var max_c: f64 = -1.0;
+
+        try self.data.print(a, "$d{d} << EOD\n", .{id});
+        for (0..height) |y| {
+            for (0..width) |x| {
+                const index = height * y + x;
+                const value = image[index];
+                if (value <= min_c) min_c = value;
+                if (value >= max_c) max_c = value;
+                try self.data.print(a, "{d} ", .{value});
+            }
+            try self.data.print(a, "\n", .{});
+        }
+        try self.data.appendSlice(a, "EOD\n");
+        if (self.clauses.items.len > 0) try self.clauses.appendSlice(a, ", ");
+
+        try self.options.print(a, "set palette rgbformulae 33,13,10\n", .{});
+        try self.options.print(a, "set cbrange [{d}:{d}]\n", .{min_c, max_c});
+        try self.options.print(a, "set colorbox\n", .{});
+        try self.options.print(a, "unset key\n", .{});
+        try self.options.print(a, "set size ratio -1\n", .{});
+        try self.clauses.print(a, "$d{d} matrix with image\n", .{ id });
+        
+        self.series_count += 1;
+    }
 
     const LabelOptions = struct {
         font: []const u8 = "Sans",
@@ -448,4 +477,20 @@ fn buildOnce(a: std.mem.Allocator) !void {
 
 test "no leaks or crashes when any allocation fails" {
     try testing.checkAllAllocationFailures(testing.allocator, buildOnce, .{});
+}
+
+test "mismatch type error" {
+    var fig = testFigure(testing.allocator);
+    defer fig.deinit();
+    const v = [_]i32{ 1, 2, 3 };
+    try fig.plot(&v, &v, .{ .label = "a" });
+    try fig.scatter(&v, &v, .{});
+
+    // const T = struct {
+    //     data: i32,
+    // };
+    // const a = T{ .data = 0 };
+    // const b = T{ .data = 0 };
+    // const u = [_]T{a, b};
+    // try testing.expectError(error.GnuplotMismatchDataType, fig.plot(&u, &u, .{}));
 }
