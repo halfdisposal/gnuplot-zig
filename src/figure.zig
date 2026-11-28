@@ -1,7 +1,7 @@
 const std = @import("std");
 const Io = std.Io;
 
-pub fn is_string(comptime T: type) bool {
+fn is_string(comptime T: type) bool {
     return switch (@typeInfo(T)) {
         .pointer => |ptr| switch (ptr.size) {
             .slice => ptr.child == u8,
@@ -16,7 +16,7 @@ pub fn is_string(comptime T: type) bool {
     };
 }
 
-pub fn check_type(data: anytype) bool {
+fn check_type(data: anytype) bool {
     // std.debug.print("Data Info: {}\n", .{@typeInfo(@TypeOf(data))});
     const is_valid: bool = switch (@typeInfo(@TypeOf(data))) {
         .array => |arr| scan: {
@@ -82,6 +82,56 @@ fn fileTerm(path: []const u8) !FileTerm {
         if (std.ascii.endsWithIgnoreCase(path, t.ext)) return t;
     }
     return error.UnsupportedFormat;
+}
+
+fn check_float(comptime T: type) bool {
+    // std.debug.print("Info: {}\n", .{@typeInfo(T)});
+    return switch (@typeInfo(T)) {
+        .comptime_float => true,
+        .float => true,
+        .pointer => |ptr| switch (ptr.size) {
+            .one => switch (@typeInfo(ptr.child)) {
+                .comptime_float => true,
+                .float => true,
+                else => false,
+            },
+            else => false,
+        },
+        else => false,
+    };
+}
+fn check_int(comptime T: type) bool {
+    // std.debug.print("Info: {}\n", .{@typeInfo(T)});
+    return switch (@typeInfo(T)) {
+        .comptime_int => true,
+        .int => true,
+        .pointer => |ptr| switch (ptr.size) {
+            .one => switch (@typeInfo(ptr.child)) {
+                .comptime_int => true,
+                .int => true,
+                else => false,
+            },
+            else => false,
+        },
+        else => false,
+    };
+}
+
+pub fn linspace(start: anytype, stop: anytype, comptime n: usize) ![n]f64 {
+    if (!((comptime check_float(@TypeOf(start))) | (comptime check_int(@TypeOf(start))))) {
+        return error.LinspaceTypeError;
+    }
+    if (!((comptime check_float(@TypeOf(stop))) | (comptime check_int(@TypeOf(stop))))) {
+        return error.LinspaceTypeError;
+    }
+    const nf: f64 = @floatFromInt(n);
+    const diff: f64 = (stop - start) / nf;
+    var arr: [n]f64 = undefined;
+    for (&arr, 0..) |*item, i| {
+        const i_f: f64 = @floatFromInt(i);
+        item.* = start + diff * i_f;
+    }
+    return arr;
 }
 
 pub const Figure = struct {
