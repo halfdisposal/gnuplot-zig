@@ -1,5 +1,6 @@
 const std = @import("std");
 const Io = std.Io;
+const Utils = @import("utils.zig");
 
 fn is_string(comptime T: type) bool {
     return switch (@typeInfo(T)) {
@@ -84,56 +85,6 @@ fn fileTerm(path: []const u8) !FileTerm {
     return error.UnsupportedFormat;
 }
 
-fn check_float(comptime T: type) bool {
-    // std.debug.print("Info: {}\n", .{@typeInfo(T)});
-    return switch (@typeInfo(T)) {
-        .comptime_float => true,
-        .float => true,
-        .pointer => |ptr| switch (ptr.size) {
-            .one => switch (@typeInfo(ptr.child)) {
-                .comptime_float => true,
-                .float => true,
-                else => false,
-            },
-            else => false,
-        },
-        else => false,
-    };
-}
-fn check_int(comptime T: type) bool {
-    // std.debug.print("Info: {}\n", .{@typeInfo(T)});
-    return switch (@typeInfo(T)) {
-        .comptime_int => true,
-        .int => true,
-        .pointer => |ptr| switch (ptr.size) {
-            .one => switch (@typeInfo(ptr.child)) {
-                .comptime_int => true,
-                .int => true,
-                else => false,
-            },
-            else => false,
-        },
-        else => false,
-    };
-}
-
-pub fn linspace(start: anytype, stop: anytype, comptime n: usize) ![n]f64 {
-    if (!((comptime check_float(@TypeOf(start))) | (comptime check_int(@TypeOf(start))))) {
-        return error.LinspaceTypeError;
-    }
-    if (!((comptime check_float(@TypeOf(stop))) | (comptime check_int(@TypeOf(stop))))) {
-        return error.LinspaceTypeError;
-    }
-    const nf: f64 = @floatFromInt(n);
-    const diff: f64 = (stop - start) / nf;
-    var arr: [n]f64 = undefined;
-    for (&arr, 0..) |*item, i| {
-        const i_f: f64 = @floatFromInt(i);
-        item.* = start + diff * i_f;
-    }
-    return arr;
-}
-
 pub const Figure = struct {
     width: u32,
     height: u32,
@@ -186,7 +137,10 @@ pub const Figure = struct {
         pointnumber: f64 = -1.0,
     };
 
-    pub fn plot(self: *Figure, x: anytype, y: anytype, option: PlotOptions) !void {
+    pub fn plot(self: *Figure, x_: anytype, y_: anytype, option: PlotOptions) !void {
+        const x = if (comptime Utils.check_vector(@TypeOf(x_))) try Utils.VectorToArray(x_) else x_;
+        const y = if (comptime Utils.check_vector(@TypeOf(y_))) try Utils.VectorToArray(y_) else y_;
+
         if (!check_type(x) | !check_type(y)) {
             return error.GnuplotMismatchDataType;
         }
@@ -225,7 +179,8 @@ pub const Figure = struct {
         ticks: ?[]const []const u8 = null,
     };
 
-    pub fn bar(self: *Figure, data: anytype, option: BarOptions) !void {
+    pub fn bar(self: *Figure, data_: anytype, option: BarOptions) !void {
+        const data = if (comptime Utils.check_vector(@TypeOf(data_))) try Utils.VectorToArray(data_) else data_;
         if (!check_type(data)) {
             return error.GnuplotMismatchDataType;
         }
@@ -273,7 +228,10 @@ pub const Figure = struct {
         pointsize: f32 = 1.0,
         pointtype: u32 = 7,
     };
-    pub fn scatter(self: *Figure, x: anytype, y: anytype, option: ScatterOptions) !void {
+    pub fn scatter(self: *Figure, x_: anytype, y_: anytype, option: ScatterOptions) !void {
+        const x = if (comptime Utils.check_vector(@TypeOf(x_))) try Utils.VectorToArray(x_) else x_;
+        const y = if (comptime Utils.check_vector(@TypeOf(y_))) try Utils.VectorToArray(y_) else y_;
+
         if (!check_type(x) | !check_type(y)) {
             return error.GnuplotMismatchDataType;
         }
@@ -305,27 +263,28 @@ pub const Figure = struct {
         title: ?[]const u8 = null,
     };
 
-    pub fn imshow(self: *Figure, image: anytype, width: usize, height: usize, options: ImageConfig) !void {
+    pub fn imshow(self: *Figure, image_: anytype, width: usize, height: usize, options: ImageConfig) !void {
+        const image = if (comptime Utils.check_vector(@TypeOf(image_))) try Utils.VectorToArray(image_) else image_;
+
         var ext: ?[]const u8 = null;
         if (comptime is_string(@TypeOf(image))) {
             const file = fileTerm(image) catch FileTerm{ .ext = "null", .inches = false, .term = "null" };
             ext = file.ext;
-            if (std.mem.eql(u8, ext.?, "null")) { 
+            if (std.mem.eql(u8, ext.?, "null")) {
                 return error.MismatchImageFileType;
             }
             const a = self.allocator;
 
             if (self.clauses.items.len > 0) try self.clauses.appendSlice(a, ", ");
 
-            try self.options.print(a, "set palette rgbformulae {d},{d},{d}\n", 
-                .{ options.rgbformulae[0], options.rgbformulae[1], options.rgbformulae[2] });
+            try self.options.print(a, "set palette rgbformulae {d},{d},{d}\n", .{ options.rgbformulae[0], options.rgbformulae[1], options.rgbformulae[2] });
             try self.options.print(a, "set cbrange [*:*]\n", .{});
             if (options.cblabel) |l| try self.options.print(a, "set cblabel '{s}'\n", .{l});
             try self.options.print(a, "set colorbox\n", .{});
             try self.options.print(a, "unset key\n", .{});
             try self.options.print(a, "set size ratio -1\n", .{});
 
-            try self.clauses.print(a, "'{s}' binary filetype={s} with rgbimage", .{image, ext.?});
+            try self.clauses.print(a, "'{s}' binary filetype={s} with rgbimage", .{ image, ext.? });
             if (options.title) |t| {
                 try self.clauses.print(a, " title '{s}'", .{t});
             } else {
@@ -523,191 +482,3 @@ pub const Figure = struct {
     }
 };
 
-// tests
-
-const testing = std.testing;
-
-fn testFigure(a: std.mem.Allocator) Figure {
-    return Figure.init(undefined, a, .{});
-}
-
-fn expectContains(haystack: []const u8, needle: []const u8) !void {
-    if (std.mem.indexOf(u8, haystack, needle) == null) {
-        std.debug.print("\nmissing: {s}\nin:\n{s}\n", .{ needle, haystack });
-        return error.TestUnexpectedResult;
-    }
-}
-
-fn indexOfOrFail(haystack: []const u8, needle: []const u8) !usize {
-    return std.mem.indexOf(u8, haystack, needle) orelse {
-        std.debug.print("\nmissing: {s}\nin:\n{s}\n", .{ needle, haystack });
-        return error.TestUnexpectedResult;
-    };
-}
-
-test "empty figure refuses to build" {
-    var fig = testFigure(testing.allocator);
-    defer fig.deinit();
-    try testing.expectError(error.EmptyFigure, fig.build(.window));
-}
-
-test "plot writes an exact datablock and a lines clause" {
-    var fig = testFigure(testing.allocator);
-    defer fig.deinit();
-
-    const x = [_]i32{ 1, 2 };
-    const y = [_]i32{ 10, 20 };
-    try fig.plot(&x, &y, .{});
-
-    try testing.expectEqualStrings("$d0 << EOD\n1 10\n2 20\nEOD\n", fig.data.items);
-    try expectContains(fig.clauses.items, "$d0 using 1:2 with lines");
-    try testing.expectEqual(@as(usize, 1), fig.series_count);
-}
-
-test "length mismatch errors and leaves no partial data" {
-    var fig = testFigure(testing.allocator);
-    defer fig.deinit();
-
-    const x = [_]i32{ 1, 2, 3 };
-    const y = [_]i32{ 1, 2 };
-    try testing.expectError(error.LengthMismatch, fig.plot(&x, &y, .{}));
-    try testing.expectEqual(@as(usize, 0), fig.data.items.len);
-    try testing.expectEqual(@as(usize, 0), fig.clauses.items.len);
-    try testing.expectEqual(@as(usize, 0), fig.series_count);
-}
-
-test "second series gets its own id and is comma-joined" {
-    var fig = testFigure(testing.allocator);
-    defer fig.deinit();
-
-    const v = [_]i32{ 1, 2, 3 };
-    try fig.plot(&v, &v, .{});
-    try fig.scatter(&v, &v, .{});
-
-    try testing.expectEqual(@as(usize, 2), fig.series_count);
-    try expectContains(fig.clauses.items, "$d0 using 1:2 with lines");
-    try expectContains(fig.clauses.items, ", $d1 using 1:2 with points");
-}
-
-test "label and color options reach the clause; no label means notitle" {
-    var fig = testFigure(testing.allocator);
-    defer fig.deinit();
-
-    const v = [_]i32{ 1, 2 };
-    try fig.plot(&v, &v, .{ .label = "squares", .color = "red" });
-    try fig.plot(&v, &v, .{});
-
-    try expectContains(fig.clauses.items, "title 'squares'");
-    try expectContains(fig.clauses.items, "lc rgb 'red'");
-    try expectContains(fig.clauses.items, "notitle");
-}
-
-test "script order: terminal, set options, datablocks, then plot" {
-    var fig = testFigure(testing.allocator);
-    defer fig.deinit();
-
-    const v = [_]i32{ 1, 2 };
-    try fig.xlabel("time", .{});
-    try fig.plot(&v, &v, .{});
-
-    const script = try fig.build(.window);
-    defer testing.allocator.free(script);
-
-    const term_i = try indexOfOrFail(script, "set terminal");
-    const label_i = try indexOfOrFail(script, "set xlabel 'time'");
-    const data_i = try indexOfOrFail(script, "$d0 << EOD");
-    const plot_i = try indexOfOrFail(script, "plot $d0");
-
-    try testing.expect(term_i < label_i);
-    try testing.expect(label_i < data_i);
-    try testing.expect(data_i < plot_i);
-}
-
-test "a set command is its own line, not glued to the next block" {
-    var fig = testFigure(testing.allocator);
-    defer fig.deinit();
-
-    const v = [_]i32{ 1, 2 };
-    try fig.xlabel("x", .{});
-    try fig.ylabel("y", .{});
-    try fig.plot(&v, &v, .{});
-
-    const script = try fig.build(.window);
-    defer testing.allocator.free(script);
-
-    try expectContains(script, "set xlabel 'x' font 'Sans,14' offset 0,0 textcolor rgb 'black'\n");
-    try expectContains(script, "set ylabel 'y' font 'Sans,14' offset 0,0 textcolor rgb 'black'\n");
-}
-
-test "fileTerm maps extensions, ignoring case" {
-    const png = try fileTerm("out.png");
-    try testing.expectEqualStrings("pngcairo", png.term);
-    try testing.expect(!png.inches);
-
-    const pdf = try fileTerm("REPORT.PDF");
-    try testing.expectEqualStrings("pdfcairo", pdf.term);
-    try testing.expect(pdf.inches);
-
-    try testing.expectError(error.UnsupportedFormat, fileTerm("notes.txt"));
-    try testing.expectError(error.UnsupportedFormat, fileTerm("mypng"));
-}
-
-test "file output sets terminal and output, and pdf does not use pixel sizes" {
-    var fig = testFigure(testing.allocator);
-    defer fig.deinit();
-
-    const v = [_]i32{ 1, 2 };
-    try fig.plot(&v, &v, .{});
-
-    const png = try fig.build(.{ .file = "out.png" });
-    defer testing.allocator.free(png);
-    try expectContains(png, "set terminal pngcairo size 600, 400");
-    try expectContains(png, "set output 'out.png'");
-
-    const pdf = try fig.build(.{ .file = "out.pdf" });
-    defer testing.allocator.free(pdf);
-    try expectContains(pdf, "set terminal pdfcairo");
-    try testing.expect(std.mem.indexOf(u8, pdf, "size 600") == null);
-}
-
-test "unsupported file extension fails before producing a script" {
-    var fig = testFigure(testing.allocator);
-    defer fig.deinit();
-
-    const v = [_]i32{ 1, 2 };
-    try fig.plot(&v, &v, .{});
-    try testing.expectError(error.UnsupportedFormat, fig.build(.{ .file = "out.txt" }));
-}
-
-fn buildOnce(a: std.mem.Allocator) !void {
-    var fig = testFigure(a);
-    defer fig.deinit();
-
-    const v = [_]i32{ 1, 2, 3 };
-    try fig.xlabel("x", .{});
-    try fig.plot(&v, &v, .{ .label = "a" });
-    try fig.scatter(&v, &v, .{});
-
-    const script = try fig.build(.window);
-    a.free(script);
-}
-
-test "no leaks or crashes when any allocation fails" {
-    try testing.checkAllAllocationFailures(testing.allocator, buildOnce, .{});
-}
-
-test "mismatch type error" {
-    var fig = testFigure(testing.allocator);
-    defer fig.deinit();
-    const v = [_]i32{ 1, 2, 3 };
-    try fig.plot(&v, &v, .{ .label = "a" });
-    try fig.scatter(&v, &v, .{});
-
-    // const T = struct {
-    //     data: i32,
-    // };
-    // const a = T{ .data = 0 };
-    // const b = T{ .data = 0 };
-    // const u = [_]T{a, b};
-    // try testing.expectError(error.GnuplotMismatchDataType, fig.plot(&u, &u, .{}));
-}

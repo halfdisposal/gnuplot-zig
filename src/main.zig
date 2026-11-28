@@ -1,7 +1,7 @@
 const std = @import("std");
 const Io = std.Io;
 
-const g = @import("figure.zig");
+const g = @import("root.zig");
 const Figure = @import("figure.zig").Figure;
 
 pub fn main(init: std.process.Init) !void {
@@ -44,5 +44,10 @@ pub fn main(init: std.process.Init) !void {
     // try fig.xreverse();
     // try fig.show();
     
+    const x: @Vector(100, f64) = try g.Utils.vspace(0.0, 6.28, 100);
+    const y: @Vector(100, f64) = @sin(x);
+    try fig.plot(x, y, .{});
+    try fig.show();
+
 }
 
