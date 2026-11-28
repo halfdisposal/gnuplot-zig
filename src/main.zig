@@ -37,17 +37,16 @@ pub fn main(init: std.process.Init) !void {
     // try fig.xreverse();
     // try fig.show();
     //
-    // const x: @Vector(10, f32) = .{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
-    // const x_arr: [10]f32 = x;
-    // try fig.bar(&x_arr, .{.ticks = &.{"A", "B", "C"}, .color = "#ff00ef"});
-    // try fig.ylim(0.0, 11.0);
-    // try fig.xreverse();
-    // try fig.show();
-    
-    const x: @Vector(100, f64) = try g.Utils.vspace(0.0, 6.28, 100);
-    const y: @Vector(100, f64) = @sin(x);
-    try fig.plot(x, y, .{});
+    const x: @Vector(10, f32) = .{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
+    try fig.bar(x, .{.ticks = &.{"A", "B", "C"}, .color = "#ff00ef"});
+    try fig.ylim(0.0, 11.0);
+    try fig.xreverse();
     try fig.show();
+    
+    // const x: @Vector(100, f64) = try g.Utils.vspace(0.0, 6.28, 100);
+    // const y: @Vector(100, f64) = @sin(x);
+    // try fig.plot(x, y, .{});
+    // try fig.show();
 
 }
 
