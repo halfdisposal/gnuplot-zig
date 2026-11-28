@@ -22,10 +22,14 @@ pub fn main(init: std.process.Init) !void {
     try fig.plot(&x, &y2, .{.label = "line2"});
     try fig.show();
     
-    // const image = [_]i32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-    // try fig.imshow(&image, 4, 3, .{.cblabel = "label"});
-    // try fig.axis("off");
-    // try fig.show();
+    const image = [_]i32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+    try fig.imshow(&image, 4, 3, .{.cblabel = "label"});
+    try fig.axis("off");
+    try fig.show();
+
+    try fig.imshow("fig.png", 4, 3, .{.cblabel = "label"});
+    try fig.axis("off");
+    try fig.show();
 
     const x2 = [_]f32{0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
     try fig.bar(&x2, .{.ticks = &.{"A", "B", "C"}, .color = "#ff00ef"});

@@ -1,6 +1,20 @@
 const std = @import("std");
 const Io = std.Io;
 
+pub fn is_string(comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .pointer => |ptr| switch (ptr.size) {
+            .slice => ptr.child == u8,
+            .one => switch (@typeInfo(ptr.child)) {
+                .array => |arr| arr.child == u8,
+                else => false,
+            },
+            else => false,
+        },
+        .array => |arr| arr.child == u8,
+        else => false,
+    };
+}
 
 pub fn check_type(data: anytype) bool {
     // std.debug.print("Data Info: {}\n", .{@typeInfo(@TypeOf(data))});
@@ -136,13 +150,13 @@ pub const Figure = struct {
             try self.data.print(a, "{d} {d}\n", .{ xi, yi });
         }
         try self.data.appendSlice(a, "EOD\n");
-        
+
         const style = if (option.points) "linespoints" else "lines";
 
         if (self.clauses.items.len > 0) try self.clauses.appendSlice(a, ", ");
         try self.clauses.print(a, "$d{d} using 1:2 with {s} lw {d} dt {d}", .{ id, style, option.linewidth, option.linetype });
         if (option.color) |c| try self.clauses.print(a, " lc rgb '{s}'", .{c});
-        if (option.points) try self.clauses.print(a, " pt {d} ps {d} pointinterval {d}", .{option.pointstyle, option.pointsize, option.pointinterval});
+        if (option.points) try self.clauses.print(a, " pt {d} ps {d} pointinterval {d}", .{ option.pointstyle, option.pointsize, option.pointinterval });
         if (option.pointnumber > 0) try self.clauses.print(a, " pointnumber {d}", .{option.pointnumber});
         if (option.label) |l| {
             try self.clauses.print(a, " title '{s}'", .{l});
@@ -151,7 +165,7 @@ pub const Figure = struct {
         }
         self.series_count += 1;
     }
-    
+
     pub const BarOptions = struct {
         boxwidth: f64 = 0.5,
         alpha: f64 = 0.5,
@@ -170,13 +184,13 @@ pub const Figure = struct {
         const a = self.allocator;
 
         try self.data.print(a, "$d{d} << EOD\n", .{id});
-        for (1..(data.len+1), data) |xi, yi| {
+        for (1..(data.len + 1), data) |xi, yi| {
             try self.data.print(a, "{d} {d}\n", .{ xi, yi });
         }
         try self.data.appendSlice(a, "EOD\n");
 
         if (self.clauses.items.len > 0) try self.clauses.appendSlice(a, ", ");
-        try self.clauses.print(a, "$d{d} using 1:2 with boxes", .{ id });
+        try self.clauses.print(a, "$d{d} using 1:2 with boxes", .{id});
         if (option.color) |c| try self.clauses.print(a, " lc rgb '{s}'", .{c});
         if (option.label) |l| {
             try self.clauses.print(a, " title '{s}'", .{l});
@@ -186,7 +200,7 @@ pub const Figure = struct {
         if (option.ticks) |ticks| {
             try self.options.appendSlice(a, "set xtics(");
             for (1..(ticks.len + 1), ticks) |i, t| {
-                try self.options.print(a, "'{s}' {d}", .{t, i});
+                try self.options.print(a, "'{s}' {d}", .{ t, i });
                 if (i != ticks.len) try self.options.appendSlice(a, ",");
             }
             try self.options.appendSlice(a, ")\n");
@@ -199,7 +213,6 @@ pub const Figure = struct {
         } else {
             try self.options.appendSlice(a, "\n");
         }
-
 
         self.series_count += 1;
     }
@@ -237,54 +250,81 @@ pub const Figure = struct {
     }
 
     pub const ImageConfig = struct {
-        rgbformulae: [3]u32 = [_]u32{33, 13, 10},
+        rgbformulae: [3]u32 = [_]u32{ 33, 13, 10 },
         cblabel: ?[]const u8 = null,
         title: ?[]const u8 = null,
     };
 
     pub fn imshow(self: *Figure, image: anytype, width: usize, height: usize, options: ImageConfig) !void {
-        if (!check_type(image)) {
-            return error.GnuplotMismatchDataType;
-        }
-        const id = self.series_count;
-        const a = self.allocator;
-        
-        var min_c: f64 = std.math.inf(f64);
-        var max_c: f64 = -std.math.inf(f64);
-
-        try self.data.print(a, "$d{d} << EOD\n", .{id});
-        for (0..height) |y| {
-            for (0..width) |x| {
-                const index = width * y + x;
-                const value = image[index];
-                if (value <= min_c) min_c = value;
-                if (value >= max_c) max_c = value;
-                try self.data.print(a, "{d} ", .{value});
+        var ext: ?[]const u8 = null;
+        if (comptime is_string(@TypeOf(image))) {
+            const file = fileTerm(image) catch FileTerm{ .ext = ".null", .inches = false, .term = ".null" };
+            ext = file.ext[1..4];
+            if (std.mem.eql(u8, ext.?, "null")) { 
+                return error.MismatchImageFileType;
             }
-            try self.data.print(a, "\n", .{});
-        }
-        try self.data.appendSlice(a, "EOD\n");
-        if (self.clauses.items.len > 0) try self.clauses.appendSlice(a, ", ");
-        
-        if (min_c == max_c) {
-            min_c -= 0.5;
-            max_c += 0.5;
-        }
+            const a = self.allocator;
 
-        try self.options.print(a, "set palette rgbformulae {d},{d},{d}\n", .{options.rgbformulae[0], options.rgbformulae[1], options.rgbformulae[2]});
-        try self.options.print(a, "set cbrange [*:*]\n", .{});
-        if (options.cblabel) |l| try self.options.print(a, "set cblabel '{s}'\n", .{l});
-        try self.options.print(a, "set colorbox\n", .{});
-        try self.options.print(a, "unset key\n", .{});
-        try self.options.print(a, "set size ratio -1\n", .{});
-        try self.clauses.print(a, "$d{d} matrix with image", .{ id });
-        if (options.title) |t| {
-            try self.clauses.print(a, " title '{s}'", .{ t });
+            if (self.clauses.items.len > 0) try self.clauses.appendSlice(a, ", ");
+
+            try self.options.print(a, "set palette rgbformulae {d},{d},{d}\n", 
+                .{ options.rgbformulae[0], options.rgbformulae[1], options.rgbformulae[2] });
+            try self.options.print(a, "set cbrange [*:*]\n", .{});
+            if (options.cblabel) |l| try self.options.print(a, "set cblabel '{s}'\n", .{l});
+            try self.options.print(a, "set colorbox\n", .{});
+            try self.options.print(a, "unset key\n", .{});
+            try self.options.print(a, "set size ratio -1\n", .{});
+
+            try self.clauses.print(a, "'{s}' binary filetype={s} with rgbimage", .{image, ext.?});
+            if (options.title) |t| {
+                try self.clauses.print(a, " title '{s}'", .{t});
+            } else {
+                try self.clauses.appendSlice(a, " notitle");
+            }
         } else {
-            try self.clauses.appendSlice(a, " notitle");
+            if (!check_type(image)) {
+                return error.MismatchImageDataType;
+            }
+            const id = self.series_count;
+            const a = self.allocator;
+
+            var min_c: f64 = std.math.inf(f64);
+            var max_c: f64 = -std.math.inf(f64);
+
+            try self.data.print(a, "$d{d} << EOD\n", .{id});
+            for (0..height) |y| {
+                for (0..width) |x| {
+                    const index = width * y + x;
+                    const value = image[index];
+                    if (value <= min_c) min_c = value;
+                    if (value >= max_c) max_c = value;
+                    try self.data.print(a, "{d} ", .{value});
+                }
+                try self.data.print(a, "\n", .{});
+            }
+            try self.data.appendSlice(a, "EOD\n");
+            if (self.clauses.items.len > 0) try self.clauses.appendSlice(a, ", ");
+
+            if (min_c == max_c) {
+                min_c -= 0.5;
+                max_c += 0.5;
+            }
+
+            try self.options.print(a, "set palette rgbformulae {d},{d},{d}\n", .{ options.rgbformulae[0], options.rgbformulae[1], options.rgbformulae[2] });
+            try self.options.print(a, "set cbrange [*:*]\n", .{});
+            if (options.cblabel) |l| try self.options.print(a, "set cblabel '{s}'\n", .{l});
+            try self.options.print(a, "set colorbox\n", .{});
+            try self.options.print(a, "unset key\n", .{});
+            try self.options.print(a, "set size ratio -1\n", .{});
+            try self.clauses.print(a, "$d{d} matrix with image", .{id});
+            if (options.title) |t| {
+                try self.clauses.print(a, " title '{s}'", .{t});
+            } else {
+                try self.clauses.appendSlice(a, " notitle");
+            }
+
+            self.series_count += 1;
         }
-        
-        self.series_count += 1;
     }
 
     const LabelOptions = struct {
@@ -303,12 +343,12 @@ pub const Figure = struct {
     }
 
     pub fn xlim(self: *Figure, min: f64, max: f64) !void {
-        try self.options.print(self.allocator, "set xrange [{d}:{d}]\n", .{min, max});
+        try self.options.print(self.allocator, "set xrange [{d}:{d}]\n", .{ min, max });
     }
     pub fn ylim(self: *Figure, min: f64, max: f64) !void {
-        try self.options.print(self.allocator, "set yrange [{d}:{d}]\n", .{min, max});
+        try self.options.print(self.allocator, "set yrange [{d}:{d}]\n", .{ min, max });
     }
-    
+
     pub fn xreverse(self: *Figure) !void {
         try self.options.appendSlice(self.allocator, "set xrange [*:*] reverse\n");
     }
@@ -371,7 +411,7 @@ pub const Figure = struct {
             },
         }
 
-    try out.appendSlice(a, "reset\n");
+        try out.appendSlice(a, "reset\n");
         try out.appendSlice(a, self.options.items);
         try out.appendSlice(a, self.data.items);
         try out.appendSlice(a, "plot ");
@@ -424,7 +464,7 @@ pub const Figure = struct {
         try self.run(script, false);
         self.clear();
     }
-    
+
     pub fn clear(self: *Figure) void {
         self.data.clearRetainingCapacity();
         self.options.clearRetainingCapacity();
