@@ -68,13 +68,13 @@ const FileTerm = struct {
 };
 
 const file_terms = [_]FileTerm{
-    .{ .ext = ".png", .term = "pngcairo" },
-    .{ .ext = ".jpg", .term = "jpeg" },
-    .{ .ext = ".jpeg", .term = "jpeg" },
-    .{ .ext = ".gif", .term = "gif" },
-    .{ .ext = ".svg", .term = "svg" },
-    .{ .ext = ".pdf", .term = "pdfcairo", .inches = true },
-    .{ .ext = ".eps", .term = "epscairo", .inches = true },
+    .{ .ext = "png", .term = "pngcairo" },
+    .{ .ext = "jpg", .term = "jpeg" },
+    .{ .ext = "jpeg", .term = "jpeg" },
+    .{ .ext = "gif", .term = "gif" },
+    .{ .ext = "svg", .term = "svg" },
+    .{ .ext = "pdf", .term = "pdfcairo", .inches = true },
+    .{ .ext = "eps", .term = "epscairo", .inches = true },
 };
 
 fn fileTerm(path: []const u8) !FileTerm {
@@ -258,8 +258,8 @@ pub const Figure = struct {
     pub fn imshow(self: *Figure, image: anytype, width: usize, height: usize, options: ImageConfig) !void {
         var ext: ?[]const u8 = null;
         if (comptime is_string(@TypeOf(image))) {
-            const file = fileTerm(image) catch FileTerm{ .ext = ".null", .inches = false, .term = ".null" };
-            ext = file.ext[1..4];
+            const file = fileTerm(image) catch FileTerm{ .ext = "null", .inches = false, .term = "null" };
+            ext = file.ext;
             if (std.mem.eql(u8, ext.?, "null")) { 
                 return error.MismatchImageFileType;
             }
